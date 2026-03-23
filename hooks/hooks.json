@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/evaluate_tool_use.py",
+            "timeout": 30,
+            "statusMessage": "Evaluating tool safety..."
+          }
+        ]
+      }
+    ]
+  }
+}
