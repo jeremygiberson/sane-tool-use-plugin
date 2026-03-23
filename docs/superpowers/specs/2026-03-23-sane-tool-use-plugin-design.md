@@ -28,6 +28,19 @@ sane-tool-use-plugin/
 
 Three files total. Single entry point.
 
+### Plugin Manifest
+
+`.claude-plugin/plugin.json`:
+
+```json
+{
+  "name": "sane-tool-use",
+  "description": "Intelligent tool use gating — auto-allows safe actions, escalates risky ones",
+  "version": "1.0.0",
+  "hooks": "./hooks/hooks.json"
+}
+```
+
 ## Hook Configuration
 
 `hooks/hooks.json`:
@@ -56,25 +69,63 @@ Three files total. Single entry point.
 - 30s timeout — falls through to ASK if exceeded
 - Python 3 used because it ships with macOS (no extra dependencies)
 
+## Hook Input Schema
+
+Claude Code sends this JSON to stdin for every PreToolUse hook:
+
+```json
+{
+  "session_id": "abc123",
+  "transcript_path": "/path/to/transcript.jsonl",
+  "cwd": "/current/working/directory",
+  "permission_mode": "default",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": { "command": "npm test", "description": "Run tests" },
+  "tool_use_id": "toolu_01ABC123"
+}
+```
+
+Key `tool_input` field names by tool:
+
+| Tool | Relevant fields in `tool_input` |
+|------|------|
+| `Bash` | `command`, `description` |
+| `Read` | `file_path` |
+| `Write` | `file_path`, `content` |
+| `Edit` | `file_path`, `old_string`, `new_string` |
+| `Glob` | `pattern`, `path` (optional, defaults to cwd) |
+| `Grep` | `pattern`, `path` (optional, defaults to cwd) |
+| `WebFetch` | `url` |
+| `WebSearch` | `query` |
+| `Agent` | `prompt`, `description` |
+
 ## Script Logic Flow
 
 ```
 1. Parse stdin → tool_name, tool_input, cwd
-2. Check cache → if hit, return cached decision
-3. Deterministic heuristics:
-   a. File-based tools (Read, Glob, Grep):
+2. Determine project root via `git rev-parse --show-toplevel` (fallback to cwd)
+3. Check cache → if hit, return cached decision
+4. Deterministic heuristics:
+   a. Read-only file tools (Read, Glob, Grep):
       - Path outside project root → ASK
       - Sensitive file pattern (.env*) → ASK
       - Otherwise → ALLOW
    b. Web access tools (WebFetch, WebSearch) → ASK
-   c. Everything else → step 4
-4. Claude evaluation:
-   - Spawn: claude -p "<policy prompt>" --max-turns 1 --output-format json
-   - Parse response for ALLOW or ASK
+   c. Everything else (Bash, Write, Edit, Agent, etc.) → step 5
+5. Claude evaluation:
+   - Spawn: claude -p "<policy prompt>" --max-turns 1
+   - Parse response text for ALLOW or ASK
    - Cache the decision
    - Return it
-5. On any error/timeout → ASK (safe default)
+6. On any error/timeout → ASK (safe default)
 ```
+
+Note: `Write` and `Edit` are NOT in the auto-ALLOW heuristic bucket despite being file-based. They modify state, so they always go to Claude evaluation (which will typically ALLOW them for in-project git-tracked files, but that judgment requires context). All `Bash` commands also go to Claude evaluation — even common ones like `npm test` — because we cannot deterministically distinguish safe from destructive shell commands.
+
+### Project Root Determination
+
+The script runs `git rev-parse --show-toplevel` to find the true project root. This is more reliable than using `cwd` directly, which could be a subdirectory. If the git command fails (non-git project), `cwd` is used as the fallback.
 
 ### Path Resolution
 
@@ -100,9 +151,9 @@ entries:
     decision: allow
     reason: "Non-destructive test command within project"
   - tool_name: Write
-    tool_input_signature: "Write:/src/components/Button.tsx"
-    decision: ask
-    reason: "New file outside of git tracking"
+    tool_input_signature: "Write:/Users/joe/projects/myapp/src/components/Button.tsx"
+    decision: allow
+    reason: "File write within project root, recoverable via git"
 ```
 
 ### Signature Generation
@@ -128,15 +179,17 @@ No expiry. User can manually delete cache files to reset decisions.
 
 ### Format
 
-Simple YAML with a custom parser/writer (no PyYAML dependency since it's not in Python stdlib). The structure is flat enough that this is straightforward.
+Simple YAML with a custom parser/writer (no PyYAML dependency since it's not in Python stdlib). The parser only needs to support a flat list of mappings with string scalar values — no nested structures, anchors, or multi-line strings. Concurrent access from multiple sessions is acceptable for v1 (last-write-wins); no locking needed.
 
 ## Claude Evaluation Prompt
 
 Spawned via:
 
 ```
-claude -p "<prompt>" --max-turns 1 --output-format json
+claude -p "<prompt>" --max-turns 1
 ```
+
+The output is plain text (no `--output-format json`) so we can parse the `DECISION:` line directly without unwrapping a JSON envelope.
 
 Prompt template:
 
@@ -144,7 +197,7 @@ Prompt template:
 You are a security evaluator for Claude Code tool use. Evaluate whether this
 tool call is safe to auto-approve or should be escalated to the user.
 
-Project root: {cwd}
+Project root: {project_root}
 
 Tool: {tool_name}
 Input: {tool_input_json}
