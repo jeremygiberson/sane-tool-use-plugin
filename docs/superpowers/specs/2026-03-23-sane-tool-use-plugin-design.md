@@ -135,7 +135,7 @@ For file-based tools (`Read`, `Glob`, `Grep`, `Edit`, `Write`), the script resol
 
 ### Location
 
-`~/.claude/sane-tool-use-plugin/.cache/<project-id>.yml`
+`~/.claude/sane-tool-use-plugin/.cache/<project-id>.json`
 
 ### Project Identification
 
@@ -144,16 +144,23 @@ For file-based tools (`Read`, `Glob`, `Grep`, `Edit`, `Write`), the script resol
 
 ### Entry Structure
 
-```yaml
-entries:
-  - tool_name: Bash
-    tool_input_signature: "npm test"
-    decision: allow
-    reason: "Non-destructive test command within project"
-  - tool_name: Write
-    tool_input_signature: "Write:/Users/joe/projects/myapp/src/components/Button.tsx"
-    decision: allow
-    reason: "File write within project root, recoverable via git"
+```json
+{
+  "entries": [
+    {
+      "tool_name": "Bash",
+      "tool_input_signature": "npm test",
+      "decision": "allow",
+      "reason": "Non-destructive test command within project"
+    },
+    {
+      "tool_name": "Write",
+      "tool_input_signature": "Write:/Users/joe/projects/myapp/src/components/Button.tsx",
+      "decision": "allow",
+      "reason": "File write within project root, recoverable via git"
+    }
+  ]
+}
 ```
 
 ### Signature Generation
@@ -179,7 +186,7 @@ No expiry. User can manually delete cache files to reset decisions.
 
 ### Format
 
-Simple YAML with a custom parser/writer (no PyYAML dependency since it's not in Python stdlib). The parser only needs to support a flat list of mappings with string scalar values — no nested structures, anchors, or multi-line strings. Concurrent access from multiple sessions is acceptable for v1 (last-write-wins); no locking needed.
+JSON using Python's stdlib `json` module. Handles arbitrary string values (including colons, quotes, special characters) without custom parsing. Concurrent access from multiple sessions is acceptable for v1 (last-write-wins); no locking needed.
 
 ## Claude Evaluation Prompt
 
