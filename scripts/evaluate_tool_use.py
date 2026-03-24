@@ -147,6 +147,39 @@ def cache_lookup(cache_file: str, tool_name: str, signature: str) -> tuple[str, 
     return None
 
 
+READ_ONLY_TOOLS = {"Read", "Glob", "Grep"}
+WEB_TOOLS = {"WebFetch", "WebSearch"}
+
+
+def evaluate_heuristic(tool_name: str, tool_input: dict, cwd: str, project_root: str) -> tuple[str, str] | None:
+    """Apply deterministic heuristics. Returns (decision, reason) or None if ambiguous."""
+    if tool_name in READ_ONLY_TOOLS:
+        return _evaluate_file_read(tool_name, tool_input, cwd, project_root)
+    if tool_name in WEB_TOOLS:
+        return ("ask", f"Web access: {tool_name}")
+    return None
+
+
+def _evaluate_file_read(tool_name: str, tool_input: dict, cwd: str, project_root: str) -> tuple[str, str]:
+    """Evaluate a read-only file tool against project boundaries and sensitivity."""
+    if tool_name == "Read":
+        path = tool_input.get("file_path", "")
+    else:
+        path = tool_input.get("path", cwd)
+
+    resolved = resolve_path(path, cwd)
+
+    # Check project boundaries first (matches spec ordering)
+    if not is_within_project(resolved, project_root):
+        return ("ask", f"File access outside project root: {resolved}")
+
+    # Check sensitive files within project
+    if is_sensitive_file(resolved):
+        return ("ask", f"Sensitive file access: {resolved}")
+
+    return ("allow", "Read-only access within project root")
+
+
 def make_decision(decision: str, reason: str) -> dict:
     """Build a PreToolUse decision control response."""
     return {
