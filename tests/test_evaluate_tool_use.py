@@ -568,3 +568,45 @@ def test_e2e_script_env_file(tmp_path):
     assert result.returncode == 0
     output = json.loads(result.stdout)
     assert output["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+def test_main_bash_deny_cached(monkeypatch):
+    """Full flow: Bash with cached DENY -> return deny."""
+    hook_input = json.dumps({
+        "session_id": "s1", "cwd": "/project",
+        "tool_name": "Bash",
+        "tool_input": {"command": "rm -rf /"},
+        "hook_event_name": "PreToolUse", "tool_use_id": "t1"
+    })
+    monkeypatch.setattr("sys.stdin", io.StringIO(hook_input))
+    output = io.StringIO()
+    monkeypatch.setattr("sys.stdout", output)
+    with patch("evaluate_tool_use.get_project_root", return_value="/project"):
+        with patch("evaluate_tool_use.get_cache_file_path", return_value="/tmp/test-cache.json"):
+            with patch("evaluate_tool_use.cache_lookup", return_value=("deny", "Destroys filesystem")):
+                etu.main()
+    result = json.loads(output.getvalue())
+    assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert result["hookSpecificOutput"]["permissionDecisionReason"] == "Destroys filesystem"
+
+
+def test_main_bash_uncached_deny_from_claude(monkeypatch):
+    """Full flow: Bash -> Claude returns DENY -> cached and returned."""
+    hook_input = json.dumps({
+        "session_id": "s1", "cwd": "/project",
+        "tool_name": "Bash",
+        "tool_input": {"command": "rm -rf /"},
+        "hook_event_name": "PreToolUse", "tool_use_id": "t1"
+    })
+    monkeypatch.setattr("sys.stdin", io.StringIO(hook_input))
+    output = io.StringIO()
+    monkeypatch.setattr("sys.stdout", output)
+    with patch("evaluate_tool_use.get_project_root", return_value="/project"):
+        with patch("evaluate_tool_use.get_cache_file_path", return_value="/tmp/test-cache.json"):
+            with patch("evaluate_tool_use.cache_lookup", return_value=None):
+                with patch("evaluate_tool_use.evaluate_with_claude", return_value=("deny", "Destroys filesystem")):
+                    with patch("evaluate_tool_use.cache_write") as mock_write:
+                        etu.main()
+    result = json.loads(output.getvalue())
+    assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+    mock_write.assert_called_once_with("/tmp/test-cache.json", "Bash", "rm -rf /", "deny", "Destroys filesystem")
