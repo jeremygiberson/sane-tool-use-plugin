@@ -3,6 +3,21 @@
 
 import sys
 import json
+import subprocess
+
+
+def get_project_root(cwd: str) -> str:
+    """Get project root via git, falling back to cwd."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, cwd=cwd, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return cwd
 
 
 def parse_hook_input(raw: str) -> dict | None:

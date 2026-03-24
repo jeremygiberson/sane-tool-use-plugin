@@ -57,3 +57,19 @@ def test_parse_hook_input_missing_fields():
     raw = json.dumps({"session_id": "abc"})
     result = etu.parse_hook_input(raw)
     assert result is None
+
+
+def test_get_project_root_from_git(tmp_path):
+    with patch("evaluate_tool_use.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=str(tmp_path) + "\n", stderr=""
+        )
+        result = etu.get_project_root("/some/subdir")
+        assert result == str(tmp_path)
+
+
+def test_get_project_root_git_fails():
+    with patch("evaluate_tool_use.subprocess.run") as mock_run:
+        mock_run.side_effect = FileNotFoundError("git not found")
+        result = etu.get_project_root("/fallback/dir")
+        assert result == "/fallback/dir"
