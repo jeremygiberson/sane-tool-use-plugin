@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "sane-tool-use",
+  "name": "sane-tool-use-plugin",
   "owner": {
     "name": "Jeremy Giberson"
   },
