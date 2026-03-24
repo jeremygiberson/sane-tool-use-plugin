@@ -470,3 +470,47 @@ def test_main_invalid_stdin(monkeypatch):
     etu.main()
     result = json.loads(output.getvalue())
     assert result["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+def _init_git_repo(path):
+    """Initialize a git repo in the given path so get_project_root resolves correctly."""
+    subprocess.run(["git", "init"], cwd=str(path), capture_output=True)
+    subprocess.run(["git", "commit", "--allow-empty", "-m", "init"], cwd=str(path), capture_output=True)
+
+
+def test_e2e_script_read_in_project(tmp_path):
+    """Run the actual script as a subprocess with a Read tool input."""
+    _init_git_repo(tmp_path)
+    script_path = os.path.join(os.path.dirname(__file__), '..', 'scripts', 'evaluate_tool_use.py')
+    hook_input = json.dumps({
+        "session_id": "s1", "cwd": str(tmp_path),
+        "tool_name": "Read",
+        "tool_input": {"file_path": str(tmp_path / "file.py")},
+        "hook_event_name": "PreToolUse", "tool_use_id": "t1"
+    })
+    result = subprocess.run(
+        ["python3", script_path],
+        input=hook_input, capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0
+    output = json.loads(result.stdout)
+    assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+
+def test_e2e_script_env_file(tmp_path):
+    """Run the actual script — .env file should trigger ASK."""
+    _init_git_repo(tmp_path)
+    script_path = os.path.join(os.path.dirname(__file__), '..', 'scripts', 'evaluate_tool_use.py')
+    hook_input = json.dumps({
+        "session_id": "s1", "cwd": str(tmp_path),
+        "tool_name": "Read",
+        "tool_input": {"file_path": str(tmp_path / ".env")},
+        "hook_event_name": "PreToolUse", "tool_use_id": "t1"
+    })
+    result = subprocess.run(
+        ["python3", script_path],
+        input=hook_input, capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0
+    output = json.loads(result.stdout)
+    assert output["hookSpecificOutput"]["permissionDecision"] == "ask"
