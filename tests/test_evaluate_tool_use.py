@@ -175,3 +175,66 @@ def test_signature_agent():
 def test_signature_unknown_tool():
     sig = etu.generate_signature("SomeTool", {"foo": "bar"}, "/project")
     assert sig == 'SomeTool:{"foo": "bar"}'
+
+
+def test_cache_write_and_read(tmp_path):
+    cache_file = tmp_path / "test-project.json"
+    etu.cache_write(str(cache_file), "Bash", "npm test", "allow", "safe command")
+    entries = etu.cache_read(str(cache_file))
+    assert len(entries) == 1
+    assert entries[0]["tool_name"] == "Bash"
+    assert entries[0]["tool_input_signature"] == "npm test"
+    assert entries[0]["decision"] == "allow"
+    assert entries[0]["reason"] == "safe command"
+
+
+def test_cache_append(tmp_path):
+    cache_file = tmp_path / "test-project.json"
+    etu.cache_write(str(cache_file), "Bash", "npm test", "allow", "safe")
+    etu.cache_write(str(cache_file), "Read", "Read:/project/foo.py", "allow", "in project")
+    entries = etu.cache_read(str(cache_file))
+    assert len(entries) == 2
+
+
+def test_cache_roundtrip_special_chars(tmp_path):
+    """Values with colons, quotes, and newlines survive round-trip."""
+    cache_file = tmp_path / "test-project.json"
+    sig = 'echo "status: active"'
+    etu.cache_write(str(cache_file), "Bash", sig, "allow", 'reason with "quotes"')
+    result = etu.cache_lookup(str(cache_file), "Bash", sig)
+    assert result == ("allow", 'reason with "quotes"')
+
+
+def test_cache_lookup_hit(tmp_path):
+    cache_file = tmp_path / "test-project.json"
+    etu.cache_write(str(cache_file), "Bash", "npm test", "allow", "safe command")
+    result = etu.cache_lookup(str(cache_file), "Bash", "npm test")
+    assert result == ("allow", "safe command")
+
+
+def test_cache_lookup_miss(tmp_path):
+    cache_file = tmp_path / "test-project.json"
+    etu.cache_write(str(cache_file), "Bash", "npm test", "allow", "safe command")
+    result = etu.cache_lookup(str(cache_file), "Bash", "npm run deploy")
+    assert result is None
+
+
+def test_cache_read_nonexistent(tmp_path):
+    cache_file = tmp_path / "nonexistent.json"
+    entries = etu.cache_read(str(cache_file))
+    assert entries == []
+
+
+def test_cache_read_corrupt(tmp_path):
+    cache_file = tmp_path / "bad.json"
+    cache_file.write_text("this is not valid json!!")
+    entries = etu.cache_read(str(cache_file))
+    assert entries == []
+
+
+def test_cache_write_creates_directories(tmp_path):
+    cache_file = tmp_path / "deep" / "nested" / "dir" / "cache.json"
+    etu.cache_write(str(cache_file), "Bash", "ls", "allow", "safe")
+    assert cache_file.exists()
+    entries = etu.cache_read(str(cache_file))
+    assert len(entries) == 1

@@ -83,6 +83,44 @@ def generate_signature(tool_name: str, tool_input: dict, cwd: str) -> str:
         return f"{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
 
 
+def cache_read(cache_file: str) -> list[dict]:
+    """Read cache entries from a JSON file. Returns [] on any error."""
+    try:
+        with open(cache_file, "r") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get("entries"), list):
+            return data["entries"]
+    except (FileNotFoundError, OSError, json.JSONDecodeError, TypeError):
+        pass
+    return []
+
+
+def cache_write(cache_file: str, tool_name: str, signature: str, decision: str, reason: str) -> None:
+    """Append a cache entry to the JSON file. Creates file and dirs if needed."""
+    try:
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        entries = cache_read(cache_file)
+        entries.append({
+            "tool_name": tool_name,
+            "tool_input_signature": signature,
+            "decision": decision,
+            "reason": reason,
+        })
+        with open(cache_file, "w") as f:
+            json.dump({"entries": entries}, f, indent=2)
+    except OSError:
+        pass  # Can't write cache — non-fatal
+
+
+def cache_lookup(cache_file: str, tool_name: str, signature: str) -> tuple[str, str] | None:
+    """Look up a cached decision. Returns (decision, reason) or None."""
+    entries = cache_read(cache_file)
+    for entry in entries:
+        if entry.get("tool_name") == tool_name and entry.get("tool_input_signature") == signature:
+            return (entry["decision"], entry["reason"])
+    return None
+
+
 def make_decision(decision: str, reason: str) -> dict:
     """Build a PreToolUse decision control response."""
     return {
