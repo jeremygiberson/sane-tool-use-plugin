@@ -180,26 +180,44 @@ def _evaluate_file_read(tool_name: str, tool_input: dict, cwd: str, project_root
     return ("allow", "Read-only access within project root")
 
 
-EVALUATION_PROMPT_TEMPLATE = """You are a security evaluator for Claude Code tool use. Evaluate whether this tool call is safe to auto-approve or should be escalated to the user.
+SYSTEM_PROMPT_TEMPLATE = """You are a security evaluator for CLI tool calls in a software project. Evaluate whether each tool call is safe.
 
 Project root: {project_root}
 
-Tool: {tool_name}
-Input: {tool_input_json}
+Rules (in priority order):
 
-Policy:
-- ALLOW non-destructive actions within the project root
-- ALLOW file writes/edits within the project (recoverable via git)
-- ALLOW running build/test/lint commands
-- ASK for anything that deletes files not tracked by git
-- ASK for anything that erases git history (force push, reset --hard)
-- ASK for access to files outside the project root
-- ASK for access to sensitive files (.env, credentials, secrets, keys)
-- ASK for web access (fetching URLs, web searches)
-- ASK for anything you're uncertain about
+DENY — unrecoverable or clearly malicious:
+- Commands that destroy data outside git tracking (rm -rf /, wipefs, dd)
+- Commands that rewrite or erase git history (git reset --hard, git push --force, git rebase with destructive intent)
+- Exfiltration of secrets or environment variables (env | curl, cat ~/.ssh/id_rsa | nc)
+- Downloading and executing opaque remote code (curl ... | bash, wget ... && sh)
+- Any command designed to damage the system, network, or other projects
 
-Respond with EXACTLY one line in this format:
-DECISION: <ALLOW|ASK> - <brief reason>"""
+ALLOW — safe, non-destructive, or recoverable:
+- Read-only commands (ls, cat, grep, find, git status, git log, git diff)
+- Build, test, lint, typecheck commands (npm test, pytest, eslint, make)
+- Writing or editing files within the project root (recoverable via git)
+- Deleting files within the project that are tracked by git (recoverable via git checkout)
+- Running inline scripts where the full script content is visible in the command (e.g. echo "console.log('hi')" | node, python -c "print('hello')")
+- Git commits, branch creation, checkout (non-destructive git operations)
+- Package install for the project (npm install, pip install -r requirements.txt)
+
+ASK — ambiguous, needs human review:
+- Deleting files that are git-ignored or untracked (not recoverable)
+- Commands that pipe or execute content not visible in the command itself (cat file.txt | bash, node script.js where script content is unknown)
+- Network-facing commands (starting servers, opening ports)
+- Package publish or global install (npm publish, pip install --global)
+- Anything not clearly covered by ALLOW or DENY rules
+- When uncertain, choose ASK"""
+
+JSON_SCHEMA = json.dumps({
+    "type": "object",
+    "properties": {
+        "decision": {"type": "string", "enum": ["ALLOW", "ASK", "DENY"]},
+        "reason": {"type": "string"}
+    },
+    "required": ["decision", "reason"]
+})
 
 
 def parse_claude_response(output: str) -> tuple[str, str] | None:
@@ -223,14 +241,18 @@ def parse_claude_response(output: str) -> tuple[str, str] | None:
 
 def evaluate_with_claude(tool_name: str, tool_input: dict, project_root: str) -> tuple[str, str]:
     """Spawn claude -p to evaluate a tool call. Returns (decision, reason)."""
-    prompt = EVALUATION_PROMPT_TEMPLATE.format(
-        project_root=project_root,
-        tool_name=tool_name,
-        tool_input_json=json.dumps(tool_input, indent=2)
-    )
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(project_root=project_root)
+    prompt = f"Tool: {tool_name}\nInput: {json.dumps(tool_input, indent=2)}"
     try:
         result = subprocess.run(
-            ["claude", "-p", prompt, "--max-turns", "1"],
+            [
+                "claude", "-p", prompt,
+                "--system-prompt", system_prompt,
+                "--json-schema", JSON_SCHEMA,
+                "--output-format", "json",
+                "--max-turns", "2",
+                "--disable-slash-commands",
+            ],
             capture_output=True, text=True, timeout=25
         )
         if result.returncode == 0 and result.stdout.strip():

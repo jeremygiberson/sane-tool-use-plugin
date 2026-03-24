@@ -396,13 +396,35 @@ def test_parse_claude_response_missing_decision():
 
 
 def test_evaluate_with_claude_allow():
+    mock_stdout = json.dumps({
+        "result": "",
+        "structured_output": {"decision": "ALLOW", "reason": "Safe test command"}
+    })
     with patch("evaluate_tool_use.subprocess.run") as mock_run:
         mock_run.return_value = subprocess.CompletedProcess(
-            args=[], returncode=0,
-            stdout="DECISION: ALLOW - Safe test command\n", stderr=""
+            args=[], returncode=0, stdout=mock_stdout, stderr=""
         )
         result = etu.evaluate_with_claude("Bash", {"command": "npm test"}, "/project")
         assert result == ("allow", "Safe test command")
+        call_args = mock_run.call_args[0][0]
+        assert "--system-prompt" in call_args
+        assert "--json-schema" in call_args
+        assert "--output-format" in call_args
+        max_turns_idx = call_args.index("--max-turns")
+        assert call_args[max_turns_idx + 1] == "2"
+
+
+def test_evaluate_with_claude_deny():
+    mock_stdout = json.dumps({
+        "result": "",
+        "structured_output": {"decision": "DENY", "reason": "Destroys filesystem"}
+    })
+    with patch("evaluate_tool_use.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=mock_stdout, stderr=""
+        )
+        result = etu.evaluate_with_claude("Bash", {"command": "rm -rf /"}, "/project")
+        assert result == ("deny", "Destroys filesystem")
 
 
 def test_evaluate_with_claude_timeout():
@@ -417,6 +439,15 @@ def test_evaluate_with_claude_not_found():
         mock_run.side_effect = FileNotFoundError("claude not found")
         result = etu.evaluate_with_claude("Bash", {"command": "npm test"}, "/project")
         assert result == ("ask", "Claude CLI not available")
+
+
+def test_evaluate_with_claude_parse_failure():
+    with patch("evaluate_tool_use.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="not json", stderr=""
+        )
+        result = etu.evaluate_with_claude("Bash", {"command": "npm test"}, "/project")
+        assert result == ("ask", "Could not parse evaluation")
 
 
 # Task 11: Wire Up main()
