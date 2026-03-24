@@ -120,3 +120,58 @@ def test_is_sensitive_file_credentials():
 
 def test_is_sensitive_file_id_rsa():
     assert etu.is_sensitive_file("/home/user/.ssh/id_rsa") is True
+
+
+def test_signature_bash():
+    sig = etu.generate_signature("Bash", {"command": "npm test"}, "/project")
+    assert sig == "npm test"
+
+
+def test_signature_read():
+    sig = etu.generate_signature("Read", {"file_path": "src/main.py"}, "/project")
+    assert sig == "Read:/project/src/main.py"
+
+
+def test_signature_write():
+    sig = etu.generate_signature("Write", {"file_path": "/project/out.txt", "content": "hi"}, "/project")
+    assert sig == "Write:/project/out.txt"
+
+
+def test_signature_edit():
+    sig = etu.generate_signature("Edit", {"file_path": "foo.py", "old_string": "a", "new_string": "b"}, "/project")
+    assert sig == "Edit:/project/foo.py"
+
+
+def test_signature_glob():
+    sig = etu.generate_signature("Glob", {"pattern": "**/*.py", "path": "/project/src"}, "/project")
+    assert sig == "Glob:**/*.py@/project/src"
+
+
+def test_signature_glob_no_path():
+    sig = etu.generate_signature("Glob", {"pattern": "**/*.py"}, "/project")
+    assert sig == "Glob:**/*.py@/project"
+
+
+def test_signature_grep():
+    sig = etu.generate_signature("Grep", {"pattern": "TODO", "path": "/project"}, "/project")
+    assert sig == "Grep:TODO@/project"
+
+
+def test_signature_webfetch():
+    sig = etu.generate_signature("WebFetch", {"url": "https://example.com"}, "/project")
+    assert sig == "WebFetch:https://example.com"
+
+
+def test_signature_websearch():
+    sig = etu.generate_signature("WebSearch", {"query": "python async"}, "/project")
+    assert sig == "WebSearch:python async"
+
+
+def test_signature_agent():
+    sig = etu.generate_signature("Agent", {"description": "search codebase", "prompt": "find X"}, "/project")
+    assert sig == "Agent:search codebase"
+
+
+def test_signature_unknown_tool():
+    sig = etu.generate_signature("SomeTool", {"foo": "bar"}, "/project")
+    assert sig == 'SomeTool:{"foo": "bar"}'

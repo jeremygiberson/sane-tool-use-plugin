@@ -62,6 +62,27 @@ def parse_hook_input(raw: str) -> dict | None:
     return data
 
 
+def generate_signature(tool_name: str, tool_input: dict, cwd: str) -> str:
+    """Generate a cache signature for a tool call."""
+    if tool_name == "Bash":
+        return tool_input.get("command", "")
+    elif tool_name in ("Read", "Write", "Edit"):
+        path = resolve_path(tool_input.get("file_path", ""), cwd)
+        return f"{tool_name}:{path}"
+    elif tool_name in ("Glob", "Grep"):
+        pattern = tool_input.get("pattern", "")
+        path = resolve_path(tool_input.get("path", cwd), cwd)
+        return f"{tool_name}:{pattern}@{path}"
+    elif tool_name == "WebFetch":
+        return f"WebFetch:{tool_input.get('url', '')}"
+    elif tool_name == "WebSearch":
+        return f"WebSearch:{tool_input.get('query', '')}"
+    elif tool_name == "Agent":
+        return f"Agent:{tool_input.get('description', '')}"
+    else:
+        return f"{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
+
+
 def make_decision(decision: str, reason: str) -> dict:
     """Build a PreToolUse decision control response."""
     return {
