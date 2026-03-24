@@ -5,6 +5,17 @@ import sys
 import json
 
 
+def parse_hook_input(raw: str) -> dict | None:
+    """Parse hook input JSON from stdin. Returns None if invalid."""
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not all(k in data for k in ("tool_name", "tool_input", "cwd")):
+        return None
+    return data
+
+
 def make_decision(decision: str, reason: str) -> dict:
     """Build a PreToolUse decision control response."""
     return {
