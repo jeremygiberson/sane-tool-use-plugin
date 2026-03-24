@@ -6,6 +6,7 @@ import json
 import subprocess
 import os
 import re
+import hashlib
 
 
 def resolve_path(file_path: str, cwd: str) -> str:
@@ -81,6 +82,31 @@ def generate_signature(tool_name: str, tool_input: dict, cwd: str) -> str:
         return f"Agent:{tool_input.get('description', '')}"
     else:
         return f"{tool_name}:{json.dumps(tool_input, sort_keys=True)}"
+
+
+def get_project_id(cwd: str) -> str:
+    """Get a project identifier from git remote, falling back to path hash."""
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True, text=True, cwd=cwd, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            url = result.stdout.strip()
+            name = url.rstrip("/").rsplit("/", 1)[-1]
+            if name.endswith(".git"):
+                name = name[:-4]
+            if name:
+                return name
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        pass
+    return hashlib.sha256(cwd.encode()).hexdigest()[:16]
+
+
+def get_cache_file_path(cwd: str) -> str:
+    """Get the cache file path for the current project."""
+    project_id = get_project_id(cwd)
+    return os.path.expanduser(f"~/.claude/sane-tool-use-plugin/.cache/{project_id}.json")
 
 
 def cache_read(cache_file: str) -> list[dict]:

@@ -5,6 +5,7 @@ import json
 import sys
 import os
 import subprocess
+import hashlib
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
@@ -238,3 +239,38 @@ def test_cache_write_creates_directories(tmp_path):
     assert cache_file.exists()
     entries = etu.cache_read(str(cache_file))
     assert len(entries) == 1
+
+
+def test_get_project_id_from_git_remote(tmp_path):
+    with patch("evaluate_tool_use.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="https://github.com/user/my-project.git\n", stderr=""
+        )
+        result = etu.get_project_id("/some/dir")
+        assert result == "my-project"
+
+
+def test_get_project_id_ssh_remote(tmp_path):
+    with patch("evaluate_tool_use.subprocess.run") as mock_run:
+        mock_run.return_value = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout="git@github.com:user/my-project.git\n", stderr=""
+        )
+        result = etu.get_project_id("/some/dir")
+        assert result == "my-project"
+
+
+def test_get_project_id_fallback_to_hash():
+    with patch("evaluate_tool_use.subprocess.run") as mock_run:
+        mock_run.side_effect = FileNotFoundError("git not found")
+        result = etu.get_project_id("/some/project/dir")
+        expected = hashlib.sha256("/some/project/dir".encode()).hexdigest()[:16]
+        assert result == expected
+
+
+def test_get_cache_file_path():
+    with patch("evaluate_tool_use.get_project_id", return_value="my-project"):
+        result = etu.get_cache_file_path("/some/dir")
+        expected = os.path.expanduser("~/.claude/sane-tool-use-plugin/.cache/my-project.json")
+        assert result == expected
