@@ -73,3 +73,50 @@ def test_get_project_root_git_fails():
         mock_run.side_effect = FileNotFoundError("git not found")
         result = etu.get_project_root("/fallback/dir")
         assert result == "/fallback/dir"
+
+
+def test_resolve_path_absolute():
+    result = etu.resolve_path("/absolute/path/file.py", "/project")
+    assert result == "/absolute/path/file.py"
+
+
+def test_resolve_path_relative():
+    result = etu.resolve_path("src/main.py", "/project")
+    assert result == "/project/src/main.py"
+
+
+def test_resolve_path_relative_escape():
+    result = etu.resolve_path("../../etc/passwd", "/project/src")
+    assert result == "/etc/passwd"
+
+
+def test_is_within_project_true():
+    assert etu.is_within_project("/project/src/main.py", "/project") is True
+
+
+def test_is_within_project_false():
+    assert etu.is_within_project("/etc/passwd", "/project") is False
+
+
+def test_is_within_project_exact_root():
+    assert etu.is_within_project("/project", "/project") is True
+
+
+def test_is_sensitive_file_env():
+    assert etu.is_sensitive_file("/project/.env") is True
+
+
+def test_is_sensitive_file_env_local():
+    assert etu.is_sensitive_file("/project/.env.local") is True
+
+
+def test_is_sensitive_file_normal():
+    assert etu.is_sensitive_file("/project/src/main.py") is False
+
+
+def test_is_sensitive_file_credentials():
+    assert etu.is_sensitive_file("/project/credentials.json") is True
+
+
+def test_is_sensitive_file_id_rsa():
+    assert etu.is_sensitive_file("/home/user/.ssh/id_rsa") is True

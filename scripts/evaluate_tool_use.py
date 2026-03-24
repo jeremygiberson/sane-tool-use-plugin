@@ -4,6 +4,37 @@
 import sys
 import json
 import subprocess
+import os
+import re
+
+
+def resolve_path(file_path: str, cwd: str) -> str:
+    """Resolve a file path against cwd to get an absolute path."""
+    if os.path.isabs(file_path):
+        return os.path.normpath(file_path)
+    return os.path.normpath(os.path.join(cwd, file_path))
+
+
+def is_within_project(resolved_path: str, project_root: str) -> bool:
+    """Check if a resolved path is within the project root."""
+    rp = os.path.normpath(resolved_path)
+    pr = os.path.normpath(project_root)
+    return rp == pr or rp.startswith(pr + os.sep)
+
+
+SENSITIVE_PATTERNS = [
+    re.compile(r'(^|/)\.env($|\.)'),
+    re.compile(r'(^|/)credentials\.json$'),
+    re.compile(r'(^|/)\.ssh/'),
+    re.compile(r'(^|/)id_rsa'),
+    re.compile(r'(^|/)\.aws/'),
+    re.compile(r'(^|/)secrets?\.(json|ya?ml|toml)$'),
+]
+
+
+def is_sensitive_file(file_path: str) -> bool:
+    """Check if a file path matches known sensitive patterns."""
+    return any(p.search(file_path) for p in SENSITIVE_PATTERNS)
 
 
 def get_project_root(cwd: str) -> str:
