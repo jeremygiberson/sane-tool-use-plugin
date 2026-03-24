@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "sane-tool-use",
-      "source": ".",
+      "source": "./",
       "description": "Intelligent tool use gating — auto-allows safe actions, escalates risky ones, blocks malicious commands",
       "version": "1.0.0",
       "keywords": ["security", "permissions", "tool-use", "hooks"],
