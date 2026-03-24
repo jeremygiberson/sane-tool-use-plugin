@@ -256,15 +256,42 @@ def make_decision(decision: str, reason: str) -> dict:
 
 def main():
     """Entry point. Reads hook input from stdin, outputs decision JSON to stdout."""
-    # Placeholder — always ASK until logic is implemented
-    decision = {
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "ask",
-            "permissionDecisionReason": "Evaluation not yet implemented"
-        }
-    }
-    json.dump(decision, sys.stdout)
+    try:
+        raw_input = sys.stdin.read()
+        hook_data = parse_hook_input(raw_input)
+        if hook_data is None:
+            json.dump(make_decision("ask", "Failed to parse tool input"), sys.stdout)
+            return
+
+        tool_name = hook_data["tool_name"]
+        tool_input = hook_data["tool_input"]
+        cwd = hook_data["cwd"]
+
+        project_root = get_project_root(cwd)
+        cache_file = get_cache_file_path(cwd)
+        signature = generate_signature(tool_name, tool_input, cwd)
+
+        # Layer 1: Cache
+        cached = cache_lookup(cache_file, tool_name, signature)
+        if cached:
+            decision, reason = cached
+            json.dump(make_decision(decision, reason), sys.stdout)
+            return
+
+        # Layer 2: Heuristics
+        heuristic_result = evaluate_heuristic(tool_name, tool_input, cwd, project_root)
+        if heuristic_result:
+            decision, reason = heuristic_result
+            json.dump(make_decision(decision, reason), sys.stdout)
+            return
+
+        # Layer 3: Claude evaluation
+        decision, reason = evaluate_with_claude(tool_name, tool_input, project_root)
+        cache_write(cache_file, tool_name, signature, decision, reason)
+        json.dump(make_decision(decision, reason), sys.stdout)
+
+    except Exception as e:
+        json.dump(make_decision("ask", f"Unexpected error: {e}"), sys.stdout)
 
 
 if __name__ == "__main__":
