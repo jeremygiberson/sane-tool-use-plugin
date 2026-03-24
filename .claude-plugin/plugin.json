@@ -2,5 +2,5 @@
   "name": "sane-tool-use",
   "description": "Intelligent tool use gating — auto-allows safe actions, escalates risky ones",
   "version": "1.0.0",
-  "keywords": ["security", "permissions", "tool-use", "hooks"],
+  "keywords": ["security", "permissions", "tool-use", "hooks"]
 }
