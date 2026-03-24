@@ -203,18 +203,22 @@ DECISION: <ALLOW|ASK> - <brief reason>"""
 
 
 def parse_claude_response(output: str) -> tuple[str, str] | None:
-    """Parse Claude's evaluation response. Returns (decision, reason) or None."""
-    for line in output.splitlines():
-        line = line.strip()
-        if line.startswith("DECISION:"):
-            rest = line[len("DECISION:"):].strip()
-            if rest.startswith("ALLOW"):
-                reason = rest[len("ALLOW"):].strip().lstrip("- ").strip()
-                return ("allow", reason or "Allowed by Claude evaluation")
-            elif rest.startswith("ASK"):
-                reason = rest[len("ASK"):].strip().lstrip("- ").strip()
-                return ("ask", reason or "Flagged by Claude evaluation")
-    return None
+    """Parse Claude's structured JSON evaluation response. Returns (decision, reason) or None."""
+    try:
+        data = json.loads(output)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    structured = data.get("structured_output")
+    if not isinstance(structured, dict):
+        return None
+    decision = structured.get("decision")
+    reason = structured.get("reason")
+    if not isinstance(decision, str) or not isinstance(reason, str):
+        return None
+    decision_lower = decision.lower()
+    if decision_lower not in ("allow", "ask", "deny"):
+        return None
+    return (decision_lower, reason)
 
 
 def evaluate_with_claude(tool_name: str, tool_input: dict, project_root: str) -> tuple[str, str]:

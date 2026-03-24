@@ -341,34 +341,57 @@ def test_heuristic_agent_returns_none():
 # Task 10: Claude Evaluation
 
 def test_parse_claude_response_allow():
-    output = "DECISION: ALLOW - Non-destructive test command"
+    output = json.dumps({
+        "result": "",
+        "structured_output": {"decision": "ALLOW", "reason": "Non-destructive test command"}
+    })
     decision, reason = etu.parse_claude_response(output)
     assert decision == "allow"
     assert reason == "Non-destructive test command"
 
 
 def test_parse_claude_response_ask():
-    output = "DECISION: ASK - Potentially destructive operation"
+    output = json.dumps({
+        "result": "",
+        "structured_output": {"decision": "ASK", "reason": "Potentially destructive"}
+    })
     decision, reason = etu.parse_claude_response(output)
     assert decision == "ask"
-    assert reason == "Potentially destructive operation"
+    assert reason == "Potentially destructive"
 
 
-def test_parse_claude_response_with_extra_lines():
-    output = "Some preamble\nDECISION: ALLOW - Safe command\nMore text"
+def test_parse_claude_response_deny():
+    output = json.dumps({
+        "result": "",
+        "structured_output": {"decision": "DENY", "reason": "Destroys filesystem"}
+    })
     decision, reason = etu.parse_claude_response(output)
-    assert decision == "allow"
-    assert reason == "Safe command"
+    assert decision == "deny"
+    assert reason == "Destroys filesystem"
 
 
-def test_parse_claude_response_unparseable():
-    output = "I think this is probably fine"
+def test_parse_claude_response_missing_structured_output():
+    output = json.dumps({"result": "some text"})
     result = etu.parse_claude_response(output)
+    assert result is None
+
+
+def test_parse_claude_response_invalid_json():
+    result = etu.parse_claude_response("not json at all")
     assert result is None
 
 
 def test_parse_claude_response_empty():
     result = etu.parse_claude_response("")
+    assert result is None
+
+
+def test_parse_claude_response_missing_decision():
+    output = json.dumps({
+        "result": "",
+        "structured_output": {"reason": "no decision field"}
+    })
+    result = etu.parse_claude_response(output)
     assert result is None
 
 
