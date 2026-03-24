@@ -5,6 +5,17 @@ import sys
 import json
 
 
+def make_decision(decision: str, reason: str) -> dict:
+    """Build a PreToolUse decision control response."""
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": decision,
+            "permissionDecisionReason": reason
+        }
+    }
+
+
 def main():
     """Entry point. Reads hook input from stdin, outputs decision JSON to stdout."""
     # Placeholder — always ASK until logic is implemented
