@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "sane-tool-use",
+  "owner": {
+    "name": "Jeremy Giberson"
+  },
+  "metadata": {
+    "description": "Intelligent tool use gating for Claude Code — auto-allows safe actions, escalates risky ones, blocks malicious commands"
+  },
+  "plugins": [
+    {
+      "name": "sane-tool-use",
+      "source": ".",
+      "description": "Intelligent tool use gating — auto-allows safe actions, escalates risky ones, blocks malicious commands",
+      "version": "1.0.0",
+      "keywords": ["security", "permissions", "tool-use", "hooks"],
+      "category": "development"
+    }
+  ]
+}
