@@ -180,6 +180,69 @@ def _evaluate_file_read(tool_name: str, tool_input: dict, cwd: str, project_root
     return ("allow", "Read-only access within project root")
 
 
+EVALUATION_PROMPT_TEMPLATE = """You are a security evaluator for Claude Code tool use. Evaluate whether this tool call is safe to auto-approve or should be escalated to the user.
+
+Project root: {project_root}
+
+Tool: {tool_name}
+Input: {tool_input_json}
+
+Policy:
+- ALLOW non-destructive actions within the project root
+- ALLOW file writes/edits within the project (recoverable via git)
+- ALLOW running build/test/lint commands
+- ASK for anything that deletes files not tracked by git
+- ASK for anything that erases git history (force push, reset --hard)
+- ASK for access to files outside the project root
+- ASK for access to sensitive files (.env, credentials, secrets, keys)
+- ASK for web access (fetching URLs, web searches)
+- ASK for anything you're uncertain about
+
+Respond with EXACTLY one line in this format:
+DECISION: <ALLOW|ASK> - <brief reason>"""
+
+
+def parse_claude_response(output: str) -> tuple[str, str] | None:
+    """Parse Claude's evaluation response. Returns (decision, reason) or None."""
+    for line in output.splitlines():
+        line = line.strip()
+        if line.startswith("DECISION:"):
+            rest = line[len("DECISION:"):].strip()
+            if rest.startswith("ALLOW"):
+                reason = rest[len("ALLOW"):].strip().lstrip("- ").strip()
+                return ("allow", reason or "Allowed by Claude evaluation")
+            elif rest.startswith("ASK"):
+                reason = rest[len("ASK"):].strip().lstrip("- ").strip()
+                return ("ask", reason or "Flagged by Claude evaluation")
+    return None
+
+
+def evaluate_with_claude(tool_name: str, tool_input: dict, project_root: str) -> tuple[str, str]:
+    """Spawn claude -p to evaluate a tool call. Returns (decision, reason)."""
+    prompt = EVALUATION_PROMPT_TEMPLATE.format(
+        project_root=project_root,
+        tool_name=tool_name,
+        tool_input_json=json.dumps(tool_input, indent=2)
+    )
+    try:
+        result = subprocess.run(
+            ["claude", "-p", prompt, "--max-turns", "1"],
+            capture_output=True, text=True, timeout=25
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            parsed = parse_claude_response(result.stdout)
+            if parsed:
+                return parsed
+            return ("ask", "Could not parse evaluation")
+        return ("ask", "Claude evaluation returned no output")
+    except subprocess.TimeoutExpired:
+        return ("ask", "Evaluation timed out")
+    except FileNotFoundError:
+        return ("ask", "Claude CLI not available")
+    except OSError as e:
+        return ("ask", f"Claude evaluation error: {e}")
+
+
 def make_decision(decision: str, reason: str) -> dict:
     """Build a PreToolUse decision control response."""
     return {
